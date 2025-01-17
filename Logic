@@ -1,0 +1,73 @@
+pip install python-telegram-bot sqlalchemy psycopg2
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
+
+Base = declarative_base()
+
+class RaffleSetting(Base):
+    __tablename__ = 'raffle_settings'
+    id = Column(Integer, primary_key=True)
+    prize = Column(String, default="250 USD")
+    entry_fee = Column(String, default="10 USD")
+    contract_address = Column(String, default="Sample Address")
+    total_tickets = Column(Integer, default=30)
+    random_win = Column(Boolean, default=False)
+
+class Ticket(Base):
+    __tablename__ = 'tickets'
+    id = Column(Integer, primary_key=True)
+    address = Column(String)
+    raffle_id = Column(Integer, ForeignKey('raffle_settings.id'))
+    raffle = relationship('RaffleSetting', back_populates='tickets')
+
+RaffleSetting.tickets = relationship('Ticket', order_by=Ticket.id, back_populates='raffle')
+
+# Setup SQLite (or replace with PostgreSQL for Heroku)
+engine = create_engine('sqlite:///rafflebot.db')  # replace with DB_URI for Heroku
+Base.metadata.create_all(engine)
+Session = sessionmaker(bind=engine)
+import logging
+from telegram import Update, BotCommand
+from telegram.ext import Updater, CommandHandler, CallbackContext
+
+# Logging setup
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class DopeRaffleBot:
+    def __init__(self, token, db_session):
+        self.updater = Updater(token)
+        self.dispatcher = self.updater.dispatcher
+        self.session = db_session
+
+        # Commands for all users
+        self.dispatcher.add_handler(CommandHandler("Dope", self.dope_command))
+        self.dispatcher.add_handler(CommandHandler("Enter", self.enter_command))
+        self.dispatcher.add_handler(CommandHandler("liveraffle", self.liveraffle_command))
+        self.dispatcher.add_handler(CommandHandler("Winners", self.winners_command))
+
+        # Admin-only commands (add authentication later)
+        self.dispatcher.add_handler(CommandHandler("setraffle", self.set_raffle_command))
+        # Add other admin commands
+    
+    def dope_command(self, update: Update, context: CallbackContext) -> None:
+        settings = self.session.query(RaffleSetting).first()
+        update.message.reply_text(
+            f"Current Raffle:\nPrize: {settings.prize}\nEntry Fee: {settings.entry_fee}\n"
+            f"Contract Address: {settings.contract_address}\nTickets Available: {settings.total_tickets}"
+        )
+
+    # More command functions here...
+
+    def run(self):
+        self.updater.start_polling()
+        self.updater.idle()
+
+# Create DB session
+session = Session()
+
+# Setup bot
+bot = DopeRaffleBot('YOUR_TELEGRAM_BOT_TOKEN', session)
+bot.run()
+worker: python your_bot_script.py
